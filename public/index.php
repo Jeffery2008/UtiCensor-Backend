@@ -261,6 +261,10 @@ try {
             (new RouterMappingController())->getConfig();
             break;
             
+        case $path === '/router-zones' && $requestMethod === 'GET':
+            (new RouterMappingController())->getZones();
+            break;
+            
         case $path === '/router-mapping' && $requestMethod === 'PUT':
             (new RouterMappingController())->update();
             break;

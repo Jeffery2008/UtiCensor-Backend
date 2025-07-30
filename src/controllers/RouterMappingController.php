@@ -336,6 +336,22 @@ class RouterMappingController
         return $this->userModel->findById($payload['user_id']);
     }
 
+    public function getZones(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->jsonResponse(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        try {
+            $routerZoneModel = new \UtiCensor\Models\RouterZone();
+            $zones = $routerZoneModel->getAll();
+            $this->jsonResponse(['zones' => $zones]);
+        } catch (\Exception $e) {
+            $this->jsonResponse(['error' => 'Failed to get zones: ' . $e->getMessage()], 500);
+        }
+    }
+
     private function jsonResponse(array $data, int $statusCode = 200): void
     {
         http_response_code($statusCode);

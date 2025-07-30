@@ -125,13 +125,7 @@ class NetifyIngestService
         $flow = $obj['flow'] ?? [];
         $interface = $obj['interface'] ?? null;
 
-        // Auto-detect or create device based on MAC address
-        $deviceId = null;
-        if (!empty($flow['local_mac'])) {
-            $deviceId = $this->deviceModel->autoDetectFromMac($flow['local_mac'], null, $routerZoneId);
-        }
-
-        // Determine router zone based on router identifier
+        // 首先确定路由器区域
         $routerZoneId = null;
         if ($routerIdentifier) {
             $routerZone = $this->routerZoneModel->findByIdentifier($routerIdentifier);
@@ -157,6 +151,20 @@ class NetifyIngestService
                         error_log("Failed to auto-create router zone: " . $e->getMessage());
                         echo date('c') . " Failed to auto-create router zone: {$routerIdentifier}\n";
                     }
+                }
+            }
+        }
+
+        // 然后基于路由器区域自动检测或创建设备
+        $deviceId = null;
+        if (!empty($flow['local_mac'])) {
+            $deviceId = $this->deviceModel->autoDetectFromMac($flow['local_mac'], null, $routerZoneId);
+            
+            // 如果设备是新创建的，记录日志
+            if ($deviceId && $routerZoneId) {
+                $device = $this->deviceModel->findById($deviceId);
+                if ($device && $device['router_zone_id'] == $routerZoneId) {
+                    echo date('c') . " Auto-assigned device '{$device['device_name']}' to router zone: {$routerIdentifier}\n";
                 }
             }
         }

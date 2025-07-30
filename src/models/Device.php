@@ -157,6 +157,7 @@ class Device
             // 如果设备已存在但没有区域，尝试分配区域
             if (!$existing['router_zone_id'] && $routerZoneId) {
                 $this->update($existing['id'], ['router_zone_id' => $routerZoneId]);
+                echo "Reassigned existing device '{$existing['device_name']}' to router zone ID: {$routerZoneId}\n";
             }
             return $existing['id'];
         }
@@ -166,6 +167,7 @@ class Device
             $defaultZone = $this->db->fetchOne('SELECT id FROM router_zones WHERE router_identifier = ?', ['default']);
             if ($defaultZone) {
                 $routerZoneId = $defaultZone['id'];
+                echo "Using default router zone for new device: {$mac}\n";
             }
         }
 
@@ -175,12 +177,20 @@ class Device
             'device_identifier' => $mac,
             'mac_address' => $mac,
             'device_type' => 'Unknown',
-            'description' => 'Auto-detected device from MAC: ' . $mac,
+            'description' => 'Auto-detected device from MAC: ' . $mac . ($routerZoneId ? ' (Router Zone ID: ' . $routerZoneId . ')' : ''),
             'is_active' => 1,
             'router_zone_id' => $routerZoneId
         ];
 
-        return $this->create($data);
+        $deviceId = $this->create($data);
+        
+        if ($deviceId && $routerZoneId) {
+            echo "Created new device '{$data['device_name']}' and assigned to router zone ID: {$routerZoneId}\n";
+        } elseif ($deviceId) {
+            echo "Created new device '{$data['device_name']}' without router zone assignment\n";
+        }
+        
+        return $deviceId;
     }
 
     public function getDeviceStats(): array
