@@ -5,12 +5,14 @@ namespace UtiCensor\Services;
 use UtiCensor\Utils\Database;
 use UtiCensor\Models\Device;
 use UtiCensor\Models\NetworkFlow;
+use UtiCensor\Models\RouterZone;
 
 class NetifyIngestService
 {
     private $db;
     private $deviceModel;
     private $flowModel;
+    private $routerZoneModel;
     private $config;
 
     public function __construct()
@@ -18,6 +20,7 @@ class NetifyIngestService
         $this->db = Database::getInstance();
         $this->deviceModel = new Device();
         $this->flowModel = new NetworkFlow();
+        $this->routerZoneModel = new RouterZone();
         $this->config = require __DIR__ . '/../../config/app.php';
     }
 
@@ -47,8 +50,13 @@ class NetifyIngestService
         
         echo date('c') . " Client connected from {$remoteIp}:{$remotePort}\n";
 
+        // 获取路由器标识符
+        $routerIdentifier = $this->getRouterIdentifierFromConnection($remoteIp, $localIp);
+        echo date('c') . " Router identifier: " . ($routerIdentifier ?? 'default') . "\n";
+
         stream_set_blocking($conn, true);
         $buffer = '';
+        $routerIdReceived = false;
 
         while (!feof($conn)) {
             $chunk = fread($conn, $this->config['netify']['buffer_size']);
@@ -66,7 +74,18 @@ class NetifyIngestService
                 
                 if ($trim === '') continue;
 
-                $this->processNetifyData($trim, $remoteIp, $remotePort, $localIp, $localPort);
+                // 检查是否是路由器标识符消息
+                if (!$routerIdReceived && strpos($trim, 'ROUTER_ID:') === 0) {
+                    $receivedRouterId = substr($trim, 10); // 去掉 'ROUTER_ID:' 前缀
+                    if (!empty($receivedRouterId)) {
+                        $routerIdentifier = $receivedRouterId;
+                        echo date('c') . " Received router identifier: {$routerIdentifier}\n";
+                        $routerIdReceived = true;
+                    }
+                    continue;
+                }
+
+                $this->processNetifyData($trim, $remoteIp, $remotePort, $localIp, $localPort, $routerIdentifier);
             }
         }
 
@@ -74,7 +93,7 @@ class NetifyIngestService
         echo date('c') . " Client disconnected {$remoteIp}:{$remotePort}\n";
     }
 
-    private function processNetifyData(string $jsonData, string $remoteIp, int $remotePort, string $localIp, int $localPort): void
+    private function processNetifyData(string $jsonData, string $remoteIp, int $remotePort, string $localIp, int $localPort, ?string $routerIdentifier = null): void
     {
         $recvMs = (int) floor(microtime(true) * 1000);
         $recvTs = (new \DateTimeImmutable())->format('Y-m-d H:i:s.v');
@@ -92,7 +111,7 @@ class NetifyIngestService
         $type = $obj['type'] ?? 'other';
 
         if ($type === 'flow') {
-            $this->processFlowData($obj, $jsonData, $recvTs, $recvMs, $remoteIp, $remotePort, $localIp, $localPort, $jsonValid, $jsonError);
+            $this->processFlowData($obj, $jsonData, $recvTs, $recvMs, $remoteIp, $remotePort, $localIp, $localPort, $jsonValid, $jsonError, $routerIdentifier);
         } elseif ($type === 'stats') {
             $this->processStatsData($obj, $jsonData, $recvTs, $recvMs);
         }
@@ -101,7 +120,7 @@ class NetifyIngestService
         $this->logProcessing($type, $obj, strlen($jsonData));
     }
 
-    private function processFlowData(array $obj, string $jsonData, string $recvTs, int $recvMs, string $remoteIp, int $remotePort, string $localIp, int $localPort, int $jsonValid, ?string $jsonError): void
+    private function processFlowData(array $obj, string $jsonData, string $recvTs, int $recvMs, string $remoteIp, int $remotePort, string $localIp, int $localPort, int $jsonValid, ?string $jsonError, ?string $routerIdentifier = null): void
     {
         $flow = $obj['flow'] ?? [];
         $interface = $obj['interface'] ?? null;
@@ -112,9 +131,56 @@ class NetifyIngestService
             $deviceId = $this->deviceModel->autoDetectFromMac($flow['local_mac']);
         }
 
+        // Determine router zone based on router identifier
+        $routerZoneId = null;
+        if ($routerIdentifier) {
+            $routerZone = $this->routerZoneModel->findByIdentifier($routerIdentifier);
+            if ($routerZone) {
+                $routerZoneId = $routerZone['id'];
+            } else {
+                // 如果路由器标识符不存在，尝试自动创建路由器区域
+                $autoCreateZones = $this->config['netify']['auto_create_zones'] ?? false;
+                if ($autoCreateZones) {
+                    try {
+                        $zoneData = [
+                            'zone_name' => '自动创建区域 - ' . $routerIdentifier,
+                            'router_identifier' => $routerIdentifier,
+                            'router_name' => '自动创建的路由器',
+                            'description' => '系统自动创建的路由器区域，标识符: ' . $routerIdentifier,
+                            'is_active' => 1,
+                            'created_by' => 1 // 使用admin用户ID
+                        ];
+                        
+                        $routerZoneId = $this->routerZoneModel->create($zoneData);
+                        echo date('c') . " Auto-created router zone: {$routerIdentifier} (ID: {$routerZoneId})\n";
+                    } catch (\Exception $e) {
+                        error_log("Failed to auto-create router zone: " . $e->getMessage());
+                        echo date('c') . " Failed to auto-create router zone: {$routerIdentifier}\n";
+                    }
+                }
+            }
+        }
+
+        // 检查是否允许未知设备
+        $allowUnknownDevices = $this->config['netify']['allow_unknown_devices'] ?? false;
+        
+        // 如果设备未知且不允许未知设备，则跳过此流量
+        if (!$deviceId && !$allowUnknownDevices) {
+            echo date('c') . " Skipping unknown device: " . ($flow['local_mac'] ?? 'unknown') . "\n";
+            return;
+        }
+
+        // 如果路由器区域未知且不允许未知区域，则跳过此流量
+        $allowUnknownZones = $this->config['netify']['allow_unknown_zones'] ?? false;
+        if (!$routerZoneId && !$allowUnknownZones) {
+            echo date('c') . " Skipping unknown router zone: " . ($routerIdentifier ?? 'unknown') . "\n";
+            return;
+        }
+
         // Prepare flow data
         $flowData = [
             'device_id' => $deviceId,
+            'router_zone_id' => $routerZoneId,
             'recv_ts' => $recvTs,
             'recv_unix_ms' => $recvMs,
             'first_seen_at' => $flow['first_seen_at'] ?? null,
@@ -262,6 +328,94 @@ class NetifyIngestService
         }
         
         return [$ip, $port];
+    }
+
+    /**
+     * 根据连接信息获取路由器标识符
+     * 优先使用路由器标识符映射，然后回退到IP映射
+     */
+    private function getRouterIdentifierFromConnection(string $remoteIp, string $localIp): ?string
+    {
+        // 方法1: 根据远程IP地址识别路由器
+        if ($remoteIp && $remoteIp !== '0.0.0.0') {
+            // 优先使用路由器标识符映射
+            $routerIdentifierMapping = $this->config['router_identifier_mapping'] ?? [];
+            if (isset($routerIdentifierMapping[$remoteIp])) {
+                return $routerIdentifierMapping[$remoteIp];
+            }
+            
+            // 回退到IP映射
+            $routerMapping = $this->config['router_mapping'] ?? [];
+            if (isset($routerMapping[$remoteIp])) {
+                return $routerMapping[$remoteIp];
+            }
+        }
+
+        // 方法2: 根据本地IP地址识别路由器
+        if ($localIp && $localIp !== '0.0.0.0') {
+            // 优先使用路由器标识符映射
+            $routerIdentifierMapping = $this->config['router_identifier_mapping'] ?? [];
+            if (isset($routerIdentifierMapping[$localIp])) {
+                return $routerIdentifierMapping[$localIp];
+            }
+            
+            // 回退到IP映射
+            $routerMapping = $this->config['router_mapping'] ?? [];
+            if (isset($routerMapping[$localIp])) {
+                return $routerMapping[$localIp];
+            }
+        }
+
+        // 默认返回null，表示使用默认区域
+        return null;
+    }
+
+    /**
+     * 获取路由器标识符（保留原方法以兼容旧代码）
+     * 可以根据远程IP、本地IP或接口名称来确定路由器
+     */
+    private function getRouterIdentifier(string $remoteIp, string $localIp, ?string $interface): ?string
+    {
+        // 方法1: 根据远程IP地址识别路由器
+        if ($remoteIp && $remoteIp !== '0.0.0.0') {
+            // 优先使用路由器标识符映射
+            $routerIdentifierMapping = $this->config['router_identifier_mapping'] ?? [];
+            if (isset($routerIdentifierMapping[$remoteIp])) {
+                return $routerIdentifierMapping[$remoteIp];
+            }
+            
+            // 回退到IP映射
+            $routerMapping = $this->config['router_mapping'] ?? [];
+            if (isset($routerMapping[$remoteIp])) {
+                return $routerMapping[$remoteIp];
+            }
+        }
+
+        // 方法2: 根据本地IP地址识别路由器
+        if ($localIp && $localIp !== '0.0.0.0') {
+            // 优先使用路由器标识符映射
+            $routerIdentifierMapping = $this->config['router_identifier_mapping'] ?? [];
+            if (isset($routerIdentifierMapping[$localIp])) {
+                return $routerIdentifierMapping[$localIp];
+            }
+            
+            // 回退到IP映射
+            $routerMapping = $this->config['router_mapping'] ?? [];
+            if (isset($routerMapping[$localIp])) {
+                return $routerMapping[$localIp];
+            }
+        }
+
+        // 方法3: 根据接口名称识别路由器
+        if ($interface) {
+            $interfaceMapping = $this->config['interface_mapping'] ?? [];
+            if (isset($interfaceMapping[$interface])) {
+                return $interfaceMapping[$interface];
+            }
+        }
+
+        // 默认返回null，表示使用默认区域
+        return null;
     }
 }
 

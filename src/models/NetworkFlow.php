@@ -25,9 +25,10 @@ class NetworkFlow
 
     public function getAll(int $offset = 0, int $limit = 50, array $filters = []): array
     {
-        $sql = 'SELECT nf.*, d.device_name, d.device_identifier 
+        $sql = 'SELECT nf.*, d.device_name, d.device_identifier, rz.zone_name, rz.router_name
                 FROM network_flows nf 
-                LEFT JOIN devices d ON nf.device_id = d.id';
+                LEFT JOIN devices d ON nf.device_id = d.id 
+                LEFT JOIN router_zones rz ON nf.router_zone_id = rz.id';
         $params = [];
         $conditions = [];
 
@@ -35,6 +36,11 @@ class NetworkFlow
         if (!empty($filters['device_id'])) {
             $conditions[] = 'nf.device_id = ?';
             $params[] = $filters['device_id'];
+        }
+
+        if (!empty($filters['router_zone_id'])) {
+            $conditions[] = 'nf.router_zone_id = ?';
+            $params[] = $filters['router_zone_id'];
         }
 
         if (!empty($filters['start_time'])) {

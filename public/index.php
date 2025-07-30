@@ -2,6 +2,12 @@
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
+// 加载环境变量
+if (file_exists(__DIR__ . '/../.env')) {
+    $dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/../');
+    $dotenv->load();
+}
+
 // Enable CORS
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
@@ -46,6 +52,8 @@ use UtiCensor\Controllers\AuthController;
 use UtiCensor\Controllers\DeviceController;
 use UtiCensor\Controllers\FilterController;
 use UtiCensor\Controllers\NetworkFlowController;
+use UtiCensor\Controllers\RouterZoneController;
+use UtiCensor\Controllers\RouterMappingController;
 
 // Simple router
 $requestUri = $_SERVER['REQUEST_URI'];
@@ -82,6 +90,10 @@ try {
             
         case $path === '/auth/logout' && $requestMethod === 'POST':
             (new AuthController())->logout();
+            break;
+            
+        case $path === '/auth/refresh' && $requestMethod === 'POST':
+            (new AuthController())->refresh();
             break;
 
         // Device routes
@@ -184,8 +196,85 @@ try {
             (new NetworkFlowController())->getProtocols();
             break;
             
+        case $path === '/flows/applications' && $requestMethod === 'GET':
+            (new NetworkFlowController())->getTopApplications();
+            break;
+            
+        case $path === '/flows/top-applications' && $requestMethod === 'GET':
+            (new NetworkFlowController())->getTopApplications();
+            break;
+            
+        case $path === '/flows/top-protocols' && $requestMethod === 'GET':
+            (new NetworkFlowController())->getTopProtocols();
+            break;
+            
+        case $path === '/flows/top-hosts' && $requestMethod === 'GET':
+            (new NetworkFlowController())->getTopHosts();
+            break;
+            
+        case $path === '/flows/hosts' && $requestMethod === 'GET':
+            (new NetworkFlowController())->getTopHosts();
+            break;
+            
         case $path === '/flows/export' && $requestMethod === 'GET':
             (new NetworkFlowController())->export();
+            break;
+
+        // Router Zone routes
+        case $path === '/router-zones' && $requestMethod === 'GET':
+            (new RouterZoneController())->index();
+            break;
+            
+        case $path === '/router-zones' && $requestMethod === 'POST':
+            (new RouterZoneController())->create();
+            break;
+            
+        case preg_match('/^\/router-zones\/(\d+)$/', $path, $matches) && $requestMethod === 'GET':
+            $_GET['id'] = $matches[1];
+            (new RouterZoneController())->show();
+            break;
+            
+        case preg_match('/^\/router-zones\/(\d+)$/', $path, $matches) && $requestMethod === 'PUT':
+            $_GET['id'] = $matches[1];
+            (new RouterZoneController())->update();
+            break;
+            
+        case preg_match('/^\/router-zones\/(\d+)$/', $path, $matches) && $requestMethod === 'DELETE':
+            $_GET['id'] = $matches[1];
+            (new RouterZoneController())->delete();
+            break;
+            
+        case $path === '/router-zones/stats' && $requestMethod === 'GET':
+            (new RouterZoneController())->stats();
+            break;
+
+        // Router Mapping routes
+        case $path === '/router-mapping' && $requestMethod === 'GET':
+            (new RouterMappingController())->index();
+            break;
+            
+        case $path === '/router-mapping/config' && $requestMethod === 'GET':
+            (new RouterMappingController())->getConfig();
+            break;
+            
+        case $path === '/router-mapping' && $requestMethod === 'PUT':
+            (new RouterMappingController())->update();
+            break;
+            
+        case $path === '/router-mapping/add' && $requestMethod === 'POST':
+            (new RouterMappingController())->addMapping();
+            break;
+            
+        case $path === '/router-mapping/remove' && $requestMethod === 'DELETE':
+            (new RouterMappingController())->removeMapping();
+            break;
+            
+        case $path === '/router-mapping/test' && $requestMethod === 'GET':
+            (new RouterMappingController())->testMapping();
+            break;
+            
+        case $path === '/router-mapping/stats' && $requestMethod === 'GET':
+            (new RouterMappingController())->getStats();
             break;
 
         // Health check
@@ -197,6 +286,49 @@ try {
                 'timestamp' => date('c'),
                 'version' => '2.0.0'
             ]);
+            break;
+
+        // Debug headers
+        case $path === '/debug-headers' && $requestMethod === 'GET':
+            http_response_code(200);
+            header('Content-Type: application/json');
+            echo json_encode([
+                'headers' => getallheaders(),
+                'authorization' => $_SERVER['HTTP_AUTHORIZATION'] ?? 'not set',
+                'server_vars' => [
+                    'HTTP_AUTHORIZATION' => $_SERVER['HTTP_AUTHORIZATION'] ?? 'not set',
+                    'HTTP_AUTHORIZATION_LOWER' => $_SERVER['HTTP_AUTHORIZATION_LOWER'] ?? 'not set'
+                ]
+            ]);
+            break;
+
+        // Debug JWT
+        case $path === '/debug-jwt' && $requestMethod === 'GET':
+            require_once __DIR__ . '/../vendor/autoload.php';
+            $headers = getallheaders();
+            $authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? $_SERVER['HTTP_AUTHORIZATION'] ?? null;
+            
+            $result = [
+                'headers' => $headers,
+                'auth_header' => $authHeader,
+                'jwt_test' => null
+            ];
+            
+            if ($authHeader && preg_match('/Bearer\s+(.*)$/i', $authHeader, $matches)) {
+                $token = $matches[1];
+                $result['token'] = substr($token, 0, 50) . '...';
+                
+                try {
+                    $payload = \UtiCensor\Utils\JWT::decode($token);
+                    $result['jwt_test'] = $payload;
+                } catch (Exception $e) {
+                    $result['jwt_error'] = $e->getMessage();
+                }
+            }
+            
+            http_response_code(200);
+            header('Content-Type: application/json');
+            echo json_encode($result);
             break;
 
         default:

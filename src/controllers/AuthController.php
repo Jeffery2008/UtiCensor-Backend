@@ -166,6 +166,32 @@ class AuthController
         $this->jsonResponse(['message' => 'Logged out successfully']);
     }
 
+    public function refresh(): void
+    {
+        $user = $this->getCurrentUser();
+        if (!$user) {
+            $this->jsonResponse(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        // Generate new token
+        $token = JWT::encode([
+            'user_id' => $user['id'],
+            'username' => $user['username'],
+            'role' => $user['role']
+        ]);
+
+        $this->jsonResponse([
+            'token' => $token,
+            'user' => [
+                'id' => $user['id'],
+                'username' => $user['username'],
+                'email' => $user['email'],
+                'role' => $user['role']
+            ]
+        ]);
+    }
+
     private function getCurrentUser(): ?array
     {
         $headers = getallheaders();

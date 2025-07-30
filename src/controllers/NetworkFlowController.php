@@ -208,6 +208,81 @@ class NetworkFlowController
         $this->jsonResponse(['protocols' => $protocols]);
     }
 
+    public function getTopApplications(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->jsonResponse(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $deviceId = (int) ($_GET['device_id'] ?? 0);
+        $startDate = $_GET['start_date'] ?? date('Y-m-d', strtotime('-7 days'));
+        $endDate = $_GET['end_date'] ?? date('Y-m-d');
+        $limit = (int) ($_GET['limit'] ?? 10);
+
+        if (!$deviceId) {
+            $this->jsonResponse(['error' => 'Device ID is required'], 400);
+            return;
+        }
+
+        try {
+            $applications = $this->flowModel->getTopApplications($deviceId, $startDate, $endDate, $limit);
+            $this->jsonResponse(['applications' => $applications]);
+        } catch (\Exception $e) {
+            $this->jsonResponse(['error' => 'Failed to get top applications'], 500);
+        }
+    }
+
+    public function getTopProtocols(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->jsonResponse(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $deviceId = (int) ($_GET['device_id'] ?? 0);
+        $startDate = $_GET['start_date'] ?? date('Y-m-d', strtotime('-7 days'));
+        $endDate = $_GET['end_date'] ?? date('Y-m-d');
+        $limit = (int) ($_GET['limit'] ?? 10);
+
+        if (!$deviceId) {
+            $this->jsonResponse(['error' => 'Device ID is required'], 400);
+            return;
+        }
+
+        try {
+            $protocols = $this->flowModel->getTopProtocols($deviceId, $startDate, $endDate, $limit);
+            $this->jsonResponse(['protocols' => $protocols]);
+        } catch (\Exception $e) {
+            $this->jsonResponse(['error' => 'Failed to get top protocols'], 500);
+        }
+    }
+
+    public function getTopHosts(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->jsonResponse(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $deviceId = (int) ($_GET['device_id'] ?? 0);
+        $startDate = $_GET['start_date'] ?? date('Y-m-d', strtotime('-7 days'));
+        $endDate = $_GET['end_date'] ?? date('Y-m-d');
+        $limit = (int) ($_GET['limit'] ?? 10);
+
+        if (!$deviceId) {
+            $this->jsonResponse(['error' => 'Device ID is required'], 400);
+            return;
+        }
+
+        try {
+            $hosts = $this->flowModel->getTopHosts($deviceId, $startDate, $endDate, $limit);
+            $this->jsonResponse(['hosts' => $hosts]);
+        } catch (\Exception $e) {
+            $this->jsonResponse(['error' => 'Failed to get top hosts'], 500);
+        }
+    }
+
     public function export(): void
     {
         if (!$this->isAuthenticated()) {

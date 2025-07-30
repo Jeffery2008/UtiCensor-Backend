@@ -35,9 +35,10 @@ class Device
 
     public function getAll(int $offset = 0, int $limit = 50, array $filters = []): array
     {
-        $sql = 'SELECT d.*, u.username as created_by_username 
+        $sql = 'SELECT d.*, u.username as created_by_username, rz.zone_name, rz.router_name
                 FROM devices d 
-                LEFT JOIN users u ON d.created_by = u.id';
+                LEFT JOIN users u ON d.created_by = u.id 
+                LEFT JOIN router_zones rz ON d.router_zone_id = rz.id';
         $params = [];
         $conditions = [];
 
@@ -49,6 +50,11 @@ class Device
         if (!empty($filters['device_type'])) {
             $conditions[] = 'd.device_type = ?';
             $params[] = $filters['device_type'];
+        }
+
+        if (!empty($filters['router_zone_id'])) {
+            $conditions[] = 'd.router_zone_id = ?';
+            $params[] = $filters['router_zone_id'];
         }
 
         if (!empty($filters['search'])) {

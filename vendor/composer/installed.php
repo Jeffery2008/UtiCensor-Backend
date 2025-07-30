@@ -1,9 +1,9 @@
 <?php return array(
     'root' => array(
         'name' => 'uticensor/backend',
-        'pretty_version' => '1.0.0+no-version-set',
-        'version' => '1.0.0.0',
-        'reference' => NULL,
+        'pretty_version' => 'dev-main',
+        'version' => 'dev-main',
+        'reference' => 'b3398264aeb11af6825926eb82083783bc66c93a',
         'type' => 'project',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -65,9 +65,9 @@
             'dev_requirement' => false,
         ),
         'uticensor/backend' => array(
-            'pretty_version' => '1.0.0+no-version-set',
-            'version' => '1.0.0.0',
-            'reference' => NULL,
+            'pretty_version' => 'dev-main',
+            'version' => 'dev-main',
+            'reference' => 'b3398264aeb11af6825926eb82083783bc66c93a',
             'type' => 'project',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),

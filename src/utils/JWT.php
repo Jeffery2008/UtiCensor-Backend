@@ -46,6 +46,7 @@ class JWT
         
         $parts = explode('.', $token);
         if (count($parts) !== 3) {
+            error_log("JWT: Invalid token format - expected 3 parts, got " . count($parts));
             return null;
         }
 
@@ -55,6 +56,7 @@ class JWT
         $payload = json_decode(self::base64UrlDecode($payloadEncoded), true);
 
         if (!$header || !$payload) {
+            error_log("JWT: Failed to decode header or payload");
             return null;
         }
 
@@ -68,11 +70,15 @@ class JWT
         $expectedSignatureEncoded = self::base64UrlEncode($expectedSignature);
 
         if (!hash_equals($expectedSignatureEncoded, $signatureEncoded)) {
+            error_log("JWT: Signature verification failed");
+            error_log("JWT: Expected: " . $expectedSignatureEncoded);
+            error_log("JWT: Got: " . $signatureEncoded);
             return null;
         }
 
         // Check expiration
         if (isset($payload['exp']) && $payload['exp'] < time()) {
+            error_log("JWT: Token expired");
             return null;
         }
 

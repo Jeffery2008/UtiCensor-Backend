@@ -277,20 +277,51 @@ class DeviceController
     private function getCurrentUser(): ?array
     {
         $headers = getallheaders();
-        $authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? null;
+        error_log("Debug: All headers: " . json_encode($headers));
+        
+        // 尝试多种方式获取Authorization头
+        $authHeader = $headers['Authorization'] ?? 
+                     $headers['authorization'] ?? 
+                     $_SERVER['HTTP_AUTHORIZATION'] ?? 
+                     $_SERVER['HTTP_AUTHORIZATION_LOWER'] ?? 
+                     $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? 
+                     null;
+        
+        // 处理Apache配置错误的情况
+        if ($authHeader === '%{HTTP:Authorization}e') {
+            $authHeader = null;
+        }
+        
+        // 如果还是没有，尝试从原始输入中解析
+        if (!$authHeader) {
+            $input = file_get_contents('php://input');
+            if (preg_match('/Authorization:\s*Bearer\s+([^\s]+)/i', $input, $matches)) {
+                $authHeader = 'Bearer ' . $matches[1];
+            }
+        }
+        
+        error_log("Debug: Authorization header: " . ($authHeader ?? 'null'));
         
         if (!$authHeader || !preg_match('/Bearer\s+(.*)$/i', $authHeader, $matches)) {
+            error_log("Debug: No valid Authorization header found");
             return null;
         }
 
         $token = $matches[1];
+        error_log("Debug: Extracted token: " . substr($token, 0, 50) . "...");
+        
         $payload = JWT::decode($token);
+        error_log("Debug: JWT decode result: " . json_encode($payload));
         
         if (!$payload || !isset($payload['user_id'])) {
+            error_log("Debug: Invalid payload or missing user_id");
             return null;
         }
 
-        return $this->userModel->findById($payload['user_id']);
+        $user = $this->userModel->findById($payload['user_id']);
+        error_log("Debug: User found: " . json_encode($user));
+        
+        return $user;
     }
 
     private function isValidMacAddress(string $mac): bool

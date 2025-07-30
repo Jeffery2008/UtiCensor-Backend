@@ -4,7 +4,7 @@
 
 namespace Composer\Autoload;
 
-class ComposerStaticInitfc43cba2e8da10242934968d0d22cef0
+class ComposerStaticInitd6240c7cf2668e8cfd0d65d3b763ba0c
 {
     public static $files = array (
         '320cde22f66dd4f5d3fd621d3e88b98f' => __DIR__ . '/..' . '/symfony/polyfill-ctype/bootstrap.php',
@@ -13,6 +13,10 @@ class ComposerStaticInitfc43cba2e8da10242934968d0d22cef0
     );
 
     public static $prefixLengthsPsr4 = array (
+        'U' => 
+        array (
+            'UtiCensor\\' => 10,
+        ),
         'S' => 
         array (
             'Symfony\\Polyfill\\Php80\\' => 23,
@@ -35,13 +39,13 @@ class ComposerStaticInitfc43cba2e8da10242934968d0d22cef0
         array (
             'Dotenv\\' => 7,
         ),
-        'A' => 
-        array (
-            'App\\' => 4,
-        ),
     );
 
     public static $prefixDirsPsr4 = array (
+        'UtiCensor\\' => 
+        array (
+            0 => __DIR__ . '/../..' . '/src',
+        ),
         'Symfony\\Polyfill\\Php80\\' => 
         array (
             0 => __DIR__ . '/..' . '/symfony/polyfill-php80',
@@ -69,10 +73,6 @@ class ComposerStaticInitfc43cba2e8da10242934968d0d22cef0
         'Dotenv\\' => 
         array (
             0 => __DIR__ . '/..' . '/vlucas/phpdotenv/src',
-        ),
-        'App\\' => 
-        array (
-            0 => __DIR__ . '/../..' . '/src',
         ),
     );
 
@@ -142,15 +142,26 @@ class ComposerStaticInitfc43cba2e8da10242934968d0d22cef0
         'Symfony\\Polyfill\\Php80\\Php80' => __DIR__ . '/..' . '/symfony/polyfill-php80/Php80.php',
         'Symfony\\Polyfill\\Php80\\PhpToken' => __DIR__ . '/..' . '/symfony/polyfill-php80/PhpToken.php',
         'UnhandledMatchError' => __DIR__ . '/..' . '/symfony/polyfill-php80/Resources/stubs/UnhandledMatchError.php',
+        'UtiCensor\\Controllers\\AuthController' => __DIR__ . '/../..' . '/src/controllers/AuthController.php',
+        'UtiCensor\\Controllers\\DeviceController' => __DIR__ . '/../..' . '/src/controllers/DeviceController.php',
+        'UtiCensor\\Controllers\\FilterController' => __DIR__ . '/../..' . '/src/controllers/FilterController.php',
+        'UtiCensor\\Controllers\\NetworkFlowController' => __DIR__ . '/../..' . '/src/controllers/NetworkFlowController.php',
+        'UtiCensor\\Models\\Device' => __DIR__ . '/../..' . '/src/models/Device.php',
+        'UtiCensor\\Models\\Filter' => __DIR__ . '/../..' . '/src/models/Filter.php',
+        'UtiCensor\\Models\\NetworkFlow' => __DIR__ . '/../..' . '/src/models/NetworkFlow.php',
+        'UtiCensor\\Models\\User' => __DIR__ . '/../..' . '/src/models/User.php',
+        'UtiCensor\\Services\\NetifyIngestService' => __DIR__ . '/../..' . '/src/services/NetifyIngestService.php',
+        'UtiCensor\\Utils\\Database' => __DIR__ . '/../..' . '/src/utils/Database.php',
+        'UtiCensor\\Utils\\JWT' => __DIR__ . '/../..' . '/src/utils/JWT.php',
         'ValueError' => __DIR__ . '/..' . '/symfony/polyfill-php80/Resources/stubs/ValueError.php',
     );
 
     public static function getInitializer(ClassLoader $loader)
     {
         return \Closure::bind(function () use ($loader) {
-            $loader->prefixLengthsPsr4 = ComposerStaticInitfc43cba2e8da10242934968d0d22cef0::$prefixLengthsPsr4;
-            $loader->prefixDirsPsr4 = ComposerStaticInitfc43cba2e8da10242934968d0d22cef0::$prefixDirsPsr4;
-            $loader->classMap = ComposerStaticInitfc43cba2e8da10242934968d0d22cef0::$classMap;
+            $loader->prefixLengthsPsr4 = ComposerStaticInitd6240c7cf2668e8cfd0d65d3b763ba0c::$prefixLengthsPsr4;
+            $loader->prefixDirsPsr4 = ComposerStaticInitd6240c7cf2668e8cfd0d65d3b763ba0c::$prefixDirsPsr4;
+            $loader->classMap = ComposerStaticInitd6240c7cf2668e8cfd0d65d3b763ba0c::$classMap;
 
         }, null, ClassLoader::class);
     }
