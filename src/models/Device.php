@@ -149,12 +149,24 @@ class Device
         );
     }
 
-    public function autoDetectFromMac(string $mac, string $deviceName = null): ?int
+    public function autoDetectFromMac(string $mac, string $deviceName = null, ?int $routerZoneId = null): ?int
     {
         // Check if device already exists
         $existing = $this->findByMac($mac);
         if ($existing) {
+            // 如果设备已存在但没有区域，尝试分配区域
+            if (!$existing['router_zone_id'] && $routerZoneId) {
+                $this->update($existing['id'], ['router_zone_id' => $routerZoneId]);
+            }
             return $existing['id'];
+        }
+
+        // 如果没有指定区域，尝试找到默认区域
+        if (!$routerZoneId) {
+            $defaultZone = $this->db->fetchOne('SELECT id FROM router_zones WHERE router_identifier = ?', ['default']);
+            if ($defaultZone) {
+                $routerZoneId = $defaultZone['id'];
+            }
         }
 
         // Create new device
@@ -164,10 +176,49 @@ class Device
             'mac_address' => $mac,
             'device_type' => 'Unknown',
             'description' => 'Auto-detected device from MAC: ' . $mac,
-            'is_active' => 1
+            'is_active' => 1,
+            'router_zone_id' => $routerZoneId
         ];
 
         return $this->create($data);
+    }
+
+    public function getDeviceStats(): array
+    {
+        // 获取总体统计
+        $totalDevices = $this->db->fetchOne('SELECT COUNT(*) as count FROM devices')['count'];
+        $activeDevices = $this->db->fetchOne('SELECT COUNT(*) as count FROM devices WHERE is_active = 1')['count'];
+        
+        // 获取按路由器区域分组的设备统计
+        $zoneStats = $this->db->fetchAll('
+            SELECT 
+                rz.id,
+                rz.zone_name,
+                rz.router_name,
+                rz.router_identifier,
+                COUNT(d.id) as device_count,
+                SUM(CASE WHEN d.is_active = 1 THEN 1 ELSE 0 END) as active_device_count
+            FROM router_zones rz
+            LEFT JOIN devices d ON rz.id = d.router_zone_id
+            GROUP BY rz.id, rz.zone_name, rz.router_name, rz.router_identifier
+            ORDER BY device_count DESC
+        ');
+
+        // 获取未分配区域的设备数量
+        $unassignedDevices = $this->db->fetchOne('
+            SELECT COUNT(*) as count 
+            FROM devices 
+            WHERE router_zone_id IS NULL OR router_zone_id = 0
+        ')['count'];
+
+        return [
+            'total_devices' => (int) $totalDevices,
+            'active_devices' => (int) $activeDevices,
+            'inactive_devices' => (int) ($totalDevices - $activeDevices),
+            'unassigned_devices' => (int) $unassignedDevices,
+            'router_zones' => $zoneStats,
+            'total_routers' => count($zoneStats)
+        ];
     }
 }
 

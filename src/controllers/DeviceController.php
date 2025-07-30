@@ -213,6 +213,17 @@ class DeviceController
         $this->jsonResponse(['device_types' => $types]);
     }
 
+    public function getStats(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->jsonResponse(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $stats = $this->deviceModel->getDeviceStats();
+        $this->jsonResponse(['stats' => $stats]);
+    }
+
     public function addInterface(): void
     {
         if (!$this->isAdminOrUser()) {

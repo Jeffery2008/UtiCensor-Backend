@@ -124,6 +124,10 @@ try {
             (new DeviceController())->getTypes();
             break;
             
+        case $path === '/devices/stats' && $requestMethod === 'GET':
+            (new DeviceController())->getStats();
+            break;
+            
         case preg_match('/^\/devices\/(\d+)\/interfaces$/', $path, $matches) && $requestMethod === 'POST':
             $_GET['device_id'] = $matches[1];
             (new DeviceController())->addInterface();

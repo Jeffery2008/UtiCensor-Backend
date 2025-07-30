@@ -128,7 +128,7 @@ class NetifyIngestService
         // Auto-detect or create device based on MAC address
         $deviceId = null;
         if (!empty($flow['local_mac'])) {
-            $deviceId = $this->deviceModel->autoDetectFromMac($flow['local_mac']);
+            $deviceId = $this->deviceModel->autoDetectFromMac($flow['local_mac'], null, $routerZoneId);
         }
 
         // Determine router zone based on router identifier
@@ -366,8 +366,8 @@ class NetifyIngestService
             }
         }
 
-        // 默认返回null，表示使用默认区域
-        return null;
+        // 如果没有找到映射，返回默认标识符而不是null
+        return 'default';
     }
 
     /**
