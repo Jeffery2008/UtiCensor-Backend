@@ -3,6 +3,7 @@
 namespace UtiCensor\Models;
 
 use UtiCensor\Utils\Database;
+use UtiCensor\Utils\Logger;
 
 class Device
 {
@@ -15,7 +16,19 @@ class Device
 
     public function create(array $data): int
     {
-        return $this->db->insert('devices', $data);
+        $deviceId = $this->db->insert('devices', $data);
+        
+        Logger::deviceAssignment("设备创建", [
+            'device_id' => $deviceId,
+            'device_name' => $data['device_name'],
+            'device_identifier' => $data['device_identifier'],
+            'mac_address' => $data['mac_address'] ?? null,
+            'router_zone_id' => $data['router_zone_id'] ?? null,
+            'auto_created' => false,
+            'action' => 'create'
+        ]);
+        
+        return $deviceId;
     }
 
     public function findById(int $id): ?array
@@ -78,12 +91,31 @@ class Device
 
     public function update(int $id, array $data): bool
     {
-        return $this->db->update('devices', $data, ['id' => $id]) > 0;
+        $result = $this->db->update('devices', $data, ['id' => $id]) > 0;
+        
+        if ($result) {
+            Logger::deviceAssignment("设备更新", [
+                'device_id' => $id,
+                'updated_fields' => array_keys($data),
+                'action' => 'update'
+            ]);
+        }
+        
+        return $result;
     }
 
     public function delete(int $id): bool
     {
-        return $this->db->delete('devices', ['id' => $id]) > 0;
+        $result = $this->db->delete('devices', ['id' => $id]) > 0;
+        
+        if ($result) {
+            Logger::deviceAssignment("设备删除", [
+                'device_id' => $id,
+                'action' => 'delete'
+            ]);
+        }
+        
+        return $result;
     }
 
     public function count(array $filters = []): int
@@ -151,15 +183,34 @@ class Device
 
     public function autoDetectFromMac(string $mac, string $deviceName = null, ?int $routerZoneId = null): ?int
     {
+        // 加载配置
+        $config = require __DIR__ . '/../../config/app.php';
+        $autoCreateDevices = $config['netify']['auto_create_devices'] ?? false;
+        
+
+        
         // Check if device already exists
         $existing = $this->findByMac($mac);
         if ($existing) {
             // 如果设备已存在但没有区域，尝试分配区域
             if (!$existing['router_zone_id'] && $routerZoneId) {
                 $this->update($existing['id'], ['router_zone_id' => $routerZoneId]);
-                echo "Reassigned existing device '{$existing['device_name']}' to router zone ID: {$routerZoneId}\n";
+                Logger::deviceAssignment("Reassigned existing device '{$existing['device_name']}' to router zone ID: {$routerZoneId}", [
+                    'device_id' => $existing['id'],
+                    'device_name' => $existing['device_name'],
+                    'mac_address' => $existing['mac_address'],
+                    'router_zone_id' => $routerZoneId,
+                    'action' => 'reassigned'
+                ]);
             }
+            // 如果设备已经有区域，不再重复分配
             return $existing['id'];
+        }
+
+        // 如果设备不存在且不允许自动创建设备，返回null
+        if (!$autoCreateDevices) {
+            Logger::warning("Device not found and auto-creation disabled: {$mac}");
+            return null;
         }
 
         // 如果没有指定区域，尝试找到默认区域
@@ -167,7 +218,12 @@ class Device
             $defaultZone = $this->db->fetchOne('SELECT id FROM router_zones WHERE router_identifier = ?', ['default']);
             if ($defaultZone) {
                 $routerZoneId = $defaultZone['id'];
-                echo "Using default router zone for new device: {$mac}\n";
+                Logger::deviceAssignment("Using default router zone for new device: {$mac}", [
+                    'mac_address' => $mac,
+                    'router_zone_id' => $routerZoneId,
+                    'zone_name' => $defaultZone['zone_name'],
+                    'action' => 'default_assignment'
+                ]);
             }
         }
 
@@ -185,9 +241,20 @@ class Device
         $deviceId = $this->create($data);
         
         if ($deviceId && $routerZoneId) {
-            echo "Created new device '{$data['device_name']}' and assigned to router zone ID: {$routerZoneId}\n";
+            Logger::deviceAssignment("Created new device '{$data['device_name']}' and assigned to router zone ID: {$routerZoneId}", [
+                'device_id' => $deviceId,
+                'device_name' => $data['device_name'],
+                'mac_address' => $data['mac_address'],
+                'router_zone_id' => $routerZoneId,
+                'auto_created' => true
+            ]);
         } elseif ($deviceId) {
-            echo "Created new device '{$data['device_name']}' without router zone assignment\n";
+            Logger::deviceAssignment("Created new device '{$data['device_name']}' without router zone assignment", [
+                'device_id' => $deviceId,
+                'device_name' => $data['device_name'],
+                'mac_address' => $data['mac_address'],
+                'auto_created' => true
+            ]);
         }
         
         return $deviceId;

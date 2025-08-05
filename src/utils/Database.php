@@ -46,6 +46,11 @@ class Database
                 $config['options']
             );
         } catch (PDOException $e) {
+            Logger::error("数据库连接失败", 'database', [
+                'host' => $config['host'],
+                'database' => $config['database'],
+                'error' => $e->getMessage()
+            ]);
             throw new \Exception("Database connection failed: " . $e->getMessage());
         }
     }

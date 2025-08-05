@@ -3,6 +3,7 @@
 namespace UtiCensor\Models;
 
 use UtiCensor\Utils\Database;
+use UtiCensor\Utils\Logger;
 
 class Filter
 {
@@ -26,9 +27,21 @@ class Filter
             }
             
             $this->db->commit();
+            
+            Logger::info("过滤器创建成功", 'filter_management', [
+                'filter_id' => $filterId,
+                'filter_name' => $data['name'],
+                'conditions_count' => count($conditions),
+                'created_by' => $data['created_by'] ?? null
+            ]);
+            
             return $filterId;
         } catch (\Exception $e) {
             $this->db->rollback();
+            Logger::error("过滤器创建失败", 'filter_management', [
+                'filter_name' => $data['name'] ?? 'unknown',
+                'error' => $e->getMessage()
+            ]);
             throw $e;
         }
     }

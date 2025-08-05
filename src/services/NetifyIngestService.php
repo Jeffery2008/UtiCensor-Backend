@@ -6,6 +6,7 @@ use UtiCensor\Utils\Database;
 use UtiCensor\Models\Device;
 use UtiCensor\Models\NetworkFlow;
 use UtiCensor\Models\RouterZone;
+use UtiCensor\Utils\Logger;
 
 class NetifyIngestService
 {
@@ -36,7 +37,7 @@ class NetifyIngestService
             throw new \Exception("Failed to start listener: $errstr ($errno)");
         }
 
-        echo date('c') . " Netify listener started on $listen\n";
+        Logger::connectionEvent("Netify listener started on $listen");
 
         while ($conn = @stream_socket_accept($server, -1)) {
             $this->handleConnection($conn);
@@ -48,15 +49,14 @@ class NetifyIngestService
         [$remoteIp, $remotePort] = $this->getEndpointParts($conn, true);
         [$localIp, $localPort] = $this->getEndpointParts($conn, false);
         
-        echo date('c') . " Client connected from {$remoteIp}:{$remotePort}\n";
+        Logger::connectionEvent("Client connected from {$remoteIp}:{$remotePort}");
 
-        // 获取路由器标识符
-        $routerIdentifier = $this->getRouterIdentifierFromConnection($remoteIp, $localIp);
-        echo date('c') . " Router identifier: " . ($routerIdentifier ?? 'default') . "\n";
-
+        // 初始化路由器标识符
+        $routerIdentifier = null;
+        $identifierReceived = false;
+        
         stream_set_blocking($conn, true);
         $buffer = '';
-        $routerIdReceived = false;
 
         while (!feof($conn)) {
             $chunk = fread($conn, $this->config['netify']['buffer_size']);
@@ -67,6 +67,7 @@ class NetifyIngestService
             
             $buffer .= $chunk;
 
+            // 按行处理数据
             while (($pos = strpos($buffer, "\n")) !== false) {
                 $line = substr($buffer, 0, $pos);
                 $buffer = substr($buffer, $pos + 1);
@@ -75,22 +76,25 @@ class NetifyIngestService
                 if ($trim === '') continue;
 
                 // 检查是否是路由器标识符消息
-                if (!$routerIdReceived && strpos($trim, 'ROUTER_ID:') === 0) {
-                    $receivedRouterId = substr($trim, 10); // 去掉 'ROUTER_ID:' 前缀
+                if (strpos($trim, 'ROUTER_ID:') === 0) {
+                    $receivedRouterId = substr($trim, 10);
                     if (!empty($receivedRouterId)) {
                         $routerIdentifier = $receivedRouterId;
-                        echo date('c') . " Received router identifier: {$routerIdentifier}\n";
-                        $routerIdReceived = true;
+                        $identifierReceived = true;
+                        Logger::connectionEvent("Received router identifier from netify-push-advanced: {$routerIdentifier}");
                     }
                     continue;
                 }
 
-                $this->processNetifyData($trim, $remoteIp, $remotePort, $localIp, $localPort, $routerIdentifier);
+                // 处理JSON数据
+                if (!empty($trim)) {
+                    $this->processNetifyData($trim, $remoteIp, $remotePort, $localIp, $localPort, $routerIdentifier);
+                }
             }
         }
 
         fclose($conn);
-        echo date('c') . " Client disconnected {$remoteIp}:{$remotePort}\n";
+        Logger::connectionEvent("Client disconnected {$remoteIp}:{$remotePort}");
     }
 
     private function processNetifyData(string $jsonData, string $remoteIp, int $remotePort, string $localIp, int $localPort, ?string $routerIdentifier = null): void
@@ -106,6 +110,17 @@ class NetifyIngestService
             $jsonValid = 0;
             $jsonError = json_last_error_msg();
             $obj = null;
+        }
+
+        // 优先使用路由器脚本发送的标识符
+        // 如果没有提供路由器标识符，尝试从连接信息获取（作为备用方案）
+        if (!$routerIdentifier) {
+            $routerIdentifier = $this->getRouterIdentifierFromConnection($remoteIp, $localIp);
+            if ($routerIdentifier) {
+                Logger::connectionEvent("Using fallback router identifier from IP mapping: {$routerIdentifier}");
+            }
+        } else {
+            Logger::connectionEvent("Using router identifier from script: {$routerIdentifier}");
         }
 
         $type = $obj['type'] ?? 'other';
@@ -127,30 +142,69 @@ class NetifyIngestService
 
         // 首先确定路由器区域
         $routerZoneId = null;
+        
+        // 处理路由器标识符
+        if (!$routerIdentifier) {
+            // 如果没有路由器标识符，根据配置决定是否生成动态标识符
+            $generateDynamicIdentifier = $this->config['netify']['generate_dynamic_identifier'] ?? false;
+            if ($generateDynamicIdentifier) {
+                // 使用远程IP和接口信息生成唯一标识符
+                $interface = $obj['interface'] ?? 'unknown';
+                $dynamicIdentifier = 'router_' . md5($remoteIp . '_' . $interface);
+                $routerIdentifier = $dynamicIdentifier;
+                Logger::connectionEvent("Generated dynamic router identifier: {$routerIdentifier} from IP: {$remoteIp}, Interface: {$interface}");
+            } else {
+                // 使用默认标识符
+                $routerIdentifier = 'default';
+                Logger::connectionEvent("Using default router identifier: {$routerIdentifier}");
+            }
+        }
+        
         if ($routerIdentifier) {
             $routerZone = $this->routerZoneModel->findByIdentifier($routerIdentifier);
             if ($routerZone) {
                 $routerZoneId = $routerZone['id'];
+                Logger::zoneCreation("Found existing router zone: {$routerIdentifier} (ID: {$routerZoneId})");
             } else {
                 // 如果路由器标识符不存在，尝试自动创建路由器区域
                 $autoCreateZones = $this->config['netify']['auto_create_zones'] ?? false;
                 if ($autoCreateZones) {
                     try {
+                        // 根据标识符类型生成不同的区域名称
+                        $zoneName = '自动创建区域';
+                        $routerName = '自动创建的路由器';
+                        
+                        if (strpos($routerIdentifier, 'router_') === 0) {
+                            if (strlen($routerIdentifier) > 20) {
+                                // 可能是基于MAC地址的标识符
+                                $zoneName = '路由器区域';
+                                $routerName = '路由器 (' . substr($routerIdentifier, 7, 12) . ')';
+                            } else {
+                                $zoneName = '动态路由器区域';
+                                $routerName = '动态路由器';
+                            }
+                        } elseif ($routerIdentifier === 'default') {
+                            $zoneName = '默认区域';
+                            $routerName = '默认路由器';
+                        }
+                        
                         $zoneData = [
-                            'zone_name' => '自动创建区域 - ' . $routerIdentifier,
+                            'zone_name' => $zoneName . ' - ' . substr($routerIdentifier, 0, 20),
                             'router_identifier' => $routerIdentifier,
-                            'router_name' => '自动创建的路由器',
-                            'description' => '系统自动创建的路由器区域，标识符: ' . $routerIdentifier,
+                            'router_name' => $routerName,
+                            'description' => '系统自动创建的路由器区域，标识符: ' . $routerIdentifier . ' (IP: ' . $remoteIp . ')',
                             'is_active' => 1,
                             'created_by' => 1 // 使用admin用户ID
                         ];
                         
                         $routerZoneId = $this->routerZoneModel->create($zoneData);
-                        echo date('c') . " Auto-created router zone: {$routerIdentifier} (ID: {$routerZoneId})\n";
+                        Logger::zoneCreation("Auto-created router zone: {$routerIdentifier} (ID: {$routerZoneId})");
                     } catch (\Exception $e) {
                         error_log("Failed to auto-create router zone: " . $e->getMessage());
-                        echo date('c') . " Failed to auto-create router zone: {$routerIdentifier}\n";
+                        Logger::error("Failed to auto-create router zone: {$routerIdentifier}");
                     }
+                } else {
+                    Logger::warning("Router zone not found and auto-creation disabled: {$routerIdentifier}");
                 }
             }
         }
@@ -159,29 +213,23 @@ class NetifyIngestService
         $deviceId = null;
         if (!empty($flow['local_mac'])) {
             $deviceId = $this->deviceModel->autoDetectFromMac($flow['local_mac'], null, $routerZoneId);
-            
-            // 如果设备是新创建的，记录日志
-            if ($deviceId && $routerZoneId) {
-                $device = $this->deviceModel->findById($deviceId);
-                if ($device && $device['router_zone_id'] == $routerZoneId) {
-                    echo date('c') . " Auto-assigned device '{$device['device_name']}' to router zone: {$routerIdentifier}\n";
-                }
-            }
+            // 注意：autoDetectFromMac方法内部已经处理了分配日志，这里不需要重复输出
         }
 
         // 检查是否允许未知设备
         $allowUnknownDevices = $this->config['netify']['allow_unknown_devices'] ?? false;
+        $autoCreateDevices = $this->config['netify']['auto_create_devices'] ?? false;
         
         // 如果设备未知且不允许未知设备，则跳过此流量
         if (!$deviceId && !$allowUnknownDevices) {
-            echo date('c') . " Skipping unknown device: " . ($flow['local_mac'] ?? 'unknown') . "\n";
+            Logger::warning("Skipping unknown device: " . ($flow['local_mac'] ?? 'unknown') . " (auto-creation: " . ($autoCreateDevices ? 'enabled' : 'disabled') . ")");
             return;
         }
 
         // 如果路由器区域未知且不允许未知区域，则跳过此流量
         $allowUnknownZones = $this->config['netify']['allow_unknown_zones'] ?? false;
         if (!$routerZoneId && !$allowUnknownZones) {
-            echo date('c') . " Skipping unknown router zone: " . ($routerIdentifier ?? 'unknown') . "\n";
+            Logger::warning("Skipping unknown router zone: " . ($routerIdentifier ?? 'unknown'));
             return;
         }
 
@@ -374,8 +422,9 @@ class NetifyIngestService
             }
         }
 
-        // 如果没有找到映射，返回默认标识符而不是null
-        return 'default';
+        // 如果没有找到映射，返回null，让上层处理
+        // 这样可以避免强制使用'default'标识符
+        return null;
     }
 
     /**

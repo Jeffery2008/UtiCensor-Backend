@@ -4,6 +4,9 @@
  * Run with: php -S 0.0.0.0:8080 -t public test_server.php
  */
 
+require_once __DIR__ . '/vendor/autoload.php';
+use UtiCensor\Utils\Logger;
+
 // Enable CORS
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
@@ -22,6 +25,16 @@ date_default_timezone_set('Asia/Shanghai');
 // Get request info
 $requestUri = $_SERVER['REQUEST_URI'];
 $requestMethod = $_SERVER['REQUEST_METHOD'];
+
+// 记录测试服务器请求
+Logger::apiRequestLog(
+    $requestMethod,
+    $_SERVER['REQUEST_URI'],
+    $requestMethod === 'GET' ? $_GET : $_POST,
+    null,
+    null,
+    null
+);
 
 // Remove query string
 $path = parse_url($requestUri, PHP_URL_PATH);
@@ -212,7 +225,7 @@ try {
             jsonResponse(['error' => 'Route not found'], 404);
             break;
     }
-} catch (Exception $e) {
+} catch (\Throwable $e) {
     jsonResponse([
         'error' => 'Internal server error',
         'debug' => [

@@ -2,6 +2,8 @@
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
+use UtiCensor\Utils\Logger;
+
 // 加载环境变量
 if (file_exists(__DIR__ . '/../.env')) {
     $dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/../');
@@ -25,8 +27,45 @@ date_default_timezone_set('Asia/Shanghai');
 
 // Error handling
 set_error_handler(function($severity, $message, $file, $line) {
+    Logger::systemError($message, null, [
+        'code' => $severity,
+        'file' => $file,
+        'line' => $line
+    ]);
     if (error_reporting() & $severity) {
         throw new ErrorException($message, 0, $severity, $file, $line);
+    }
+});
+
+set_exception_handler(function($exception) {
+    Logger::exception($exception, 'uncaught_exception');
+    
+    // 检查是否为API请求
+    $isApiRequest = strpos($_SERVER['REQUEST_URI'] ?? '', '/api/') === 0;
+    
+    if ($isApiRequest) {
+        http_response_code(500);
+        header('Content-Type: application/json');
+        
+        // 检查是否启用调试模式
+        $appConfig = require __DIR__ . '/../config/app.php';
+        $debug = $appConfig['debug'] ?? false;
+        
+        if ($debug) {
+            echo json_encode([
+                'error' => 'Internal server error',
+                'debug' => [
+                    'message' => $exception->getMessage(),
+                    'file' => $exception->getFile(),
+                    'line' => $exception->getLine(),
+                    'trace' => $exception->getTraceAsString()
+                ]
+            ]);
+        } else {
+            echo json_encode([
+                'error' => 'Internal server error'
+            ]);
+        }
     }
 });
 
@@ -54,6 +93,7 @@ use UtiCensor\Controllers\FilterController;
 use UtiCensor\Controllers\NetworkFlowController;
 use UtiCensor\Controllers\RouterZoneController;
 use UtiCensor\Controllers\RouterMappingController;
+use UtiCensor\Controllers\LogController;
 
 // Simple router
 $requestUri = $_SERVER['REQUEST_URI'];
@@ -70,6 +110,17 @@ if (strpos($path, $basePath) === 0) {
 
 // Route handling
 try {
+    // 记录API请求开始
+    $startTime = microtime(true);
+    Logger::apiRequestLog(
+        $requestMethod,
+        $_SERVER['REQUEST_URI'],
+        $requestMethod === 'GET' ? $_GET : $_POST,
+        null,
+        null,
+        null
+    );
+    
     switch (true) {
         // Auth routes
         case $path === '/auth/login' && $requestMethod === 'POST':
@@ -185,11 +236,11 @@ try {
             break;
             
         case $path === '/flows/stats' && $requestMethod === 'GET':
-            (new NetworkFlowController())->getStats();
+            (new NetworkFlowController())->stats();
             break;
             
         case $path === '/flows/stats/hourly' && $requestMethod === 'GET':
-            (new NetworkFlowController())->getHourlyStats();
+            (new NetworkFlowController())->hourlyStats();
             break;
             
         case $path === '/flows/applications' && $requestMethod === 'GET':
@@ -200,9 +251,7 @@ try {
             (new NetworkFlowController())->getProtocols();
             break;
             
-        case $path === '/flows/applications' && $requestMethod === 'GET':
-            (new NetworkFlowController())->getTopApplications();
-            break;
+
             
         case $path === '/flows/top-applications' && $requestMethod === 'GET':
             (new NetworkFlowController())->getTopApplications();
@@ -285,6 +334,37 @@ try {
             (new RouterMappingController())->getStats();
             break;
 
+        // Logs routes
+        case $path === '/logs' && $requestMethod === 'GET':
+            (new LogController())->index();
+            break;
+            
+        case preg_match('/^\/logs\/(\d+)$/', $path, $matches) && $requestMethod === 'GET':
+            (new LogController())->show((int)$matches[1]);
+            break;
+            
+        case $path === '/logs/stats' && $requestMethod === 'GET':
+            (new LogController())->stats();
+            break;
+            
+        case $path === '/logs/cleanup' && $requestMethod === 'POST':
+            (new LogController())->cleanup();
+            break;
+            
+        case $path === '/logs/export' && $requestMethod === 'GET':
+            (new LogController())->export();
+            break;
+            
+        case $path === '/logs/types' && $requestMethod === 'GET':
+            (new LogController())->types();
+            break;
+            
+        case $path === '/logs/levels' && $requestMethod === 'GET':
+            (new LogController())->levels();
+            break;
+
+
+
         // Health check
         case $path === '/health' && $requestMethod === 'GET':
             http_response_code(200);
@@ -329,7 +409,7 @@ try {
                 try {
                     $payload = \UtiCensor\Utils\JWT::decode($token);
                     $result['jwt_test'] = $payload;
-                } catch (Exception $e) {
+                } catch (\Throwable $e) {
                     $result['jwt_error'] = $e->getMessage();
                 }
             }
@@ -345,7 +425,25 @@ try {
             echo json_encode(['error' => 'Route not found']);
             break;
     }
-} catch (Exception $e) {
+    
+    // 记录请求完成
+    $endTime = microtime(true);
+    $executionTime = $endTime - $startTime;
+    
+    Logger::apiRequestLog(
+        $requestMethod,
+        $_SERVER['REQUEST_URI'],
+        $requestMethod === 'GET' ? $_GET : $_POST,
+        null,
+        http_response_code(),
+        $executionTime
+    );
+    
+} catch (\Throwable $e) {
+    Logger::exception($e, 'api_error', [
+        'method' => $requestMethod,
+        'uri' => $_SERVER['REQUEST_URI']
+    ]);
     http_response_code(500);
     header('Content-Type: application/json');
     

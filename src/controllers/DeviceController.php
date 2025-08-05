@@ -5,6 +5,7 @@ namespace UtiCensor\Controllers;
 use UtiCensor\Models\Device;
 use UtiCensor\Models\User;
 use UtiCensor\Utils\JWT;
+use UtiCensor\Utils\Logger;
 
 class DeviceController
 {
@@ -115,11 +116,23 @@ class DeviceController
             $deviceId = $this->deviceModel->create($data);
             $device = $this->deviceModel->findById($deviceId);
             
+            Logger::info("设备创建成功", 'device_management', [
+                'device_id' => $deviceId,
+                'device_name' => $data['device_name'],
+                'device_identifier' => $data['device_identifier'],
+                'created_by' => $currentUser['id']
+            ]);
+            
             $this->jsonResponse([
                 'message' => 'Device created successfully',
                 'device' => $device
             ], 201);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            Logger::error("设备创建失败", 'device_management', [
+                'device_name' => $data['device_name'],
+                'device_identifier' => $data['device_identifier'],
+                'error' => $e->getMessage()
+            ]);
             $this->jsonResponse(['error' => 'Failed to create device'], 500);
         }
     }
@@ -166,11 +179,18 @@ class DeviceController
             $this->deviceModel->update($id, $updateData);
             $updatedDevice = $this->deviceModel->findById($id);
             
+            Logger::info("设备更新成功", 'device_management', [
+                'device_id' => $id,
+                'device_name' => $device['device_name'],
+                'updated_fields' => array_keys($updateData),
+                'updated_by' => $this->getCurrentUser()['id'] ?? null
+            ]);
+            
             $this->jsonResponse([
                 'message' => 'Device updated successfully',
                 'device' => $updatedDevice
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->jsonResponse(['error' => 'Failed to update device'], 500);
         }
     }
@@ -196,8 +216,20 @@ class DeviceController
 
         try {
             $this->deviceModel->delete($id);
+            
+            Logger::info("设备删除成功", 'device_management', [
+                'device_id' => $id,
+                'device_name' => $device['device_name'],
+                'deleted_by' => $this->getCurrentUser()['id'] ?? null
+            ]);
+            
             $this->jsonResponse(['message' => 'Device deleted successfully']);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            Logger::error("设备删除失败", 'device_management', [
+                'device_id' => $id,
+                'device_name' => $device['device_name'],
+                'error' => $e->getMessage()
+            ]);
             $this->jsonResponse(['error' => 'Failed to delete device'], 500);
         }
     }
@@ -263,7 +295,7 @@ class DeviceController
                 'message' => 'Interface added successfully',
                 'interface_id' => $interfaceId
             ], 201);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->jsonResponse(['error' => 'Failed to add interface'], 500);
         }
     }

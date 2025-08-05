@@ -2,6 +2,8 @@
 
 namespace UtiCensor\Utils;
 
+use UtiCensor\Utils\Logger;
+
 class JWT
 {
     private static $config;
@@ -46,7 +48,10 @@ class JWT
         
         $parts = explode('.', $token);
         if (count($parts) !== 3) {
-            error_log("JWT: Invalid token format - expected 3 parts, got " . count($parts));
+            Logger::warning("JWT令牌格式无效", 'jwt', [
+                'expected_parts' => 3,
+                'actual_parts' => count($parts)
+            ]);
             return null;
         }
 
@@ -56,7 +61,10 @@ class JWT
         $payload = json_decode(self::base64UrlDecode($payloadEncoded), true);
 
         if (!$header || !$payload) {
-            error_log("JWT: Failed to decode header or payload");
+            Logger::warning("JWT令牌解码失败", 'jwt', [
+                'header_valid' => $header !== null,
+                'payload_valid' => $payload !== null
+            ]);
             return null;
         }
 
@@ -70,15 +78,19 @@ class JWT
         $expectedSignatureEncoded = self::base64UrlEncode($expectedSignature);
 
         if (!hash_equals($expectedSignatureEncoded, $signatureEncoded)) {
-            error_log("JWT: Signature verification failed");
-            error_log("JWT: Expected: " . $expectedSignatureEncoded);
-            error_log("JWT: Got: " . $signatureEncoded);
+            Logger::warning("JWT令牌签名验证失败", 'jwt', [
+                'expected_signature' => substr($expectedSignatureEncoded, 0, 10) . '...',
+                'actual_signature' => substr($signatureEncoded, 0, 10) . '...'
+            ]);
             return null;
         }
 
         // Check expiration
         if (isset($payload['exp']) && $payload['exp'] < time()) {
-            error_log("JWT: Token expired");
+            Logger::warning("JWT令牌已过期", 'jwt', [
+                'expiration_time' => date('Y-m-d H:i:s', $payload['exp']),
+                'current_time' => date('Y-m-d H:i:s')
+            ]);
             return null;
         }
 

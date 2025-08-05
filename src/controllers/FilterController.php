@@ -5,6 +5,7 @@ namespace UtiCensor\Controllers;
 use UtiCensor\Models\Filter;
 use UtiCensor\Models\User;
 use UtiCensor\Utils\JWT;
+use UtiCensor\Utils\Logger;
 
 class FilterController
 {
@@ -129,11 +130,22 @@ class FilterController
             $filterId = $this->filterModel->create($filterData, $conditions);
             $filter = $this->filterModel->findById($filterId);
             
+            Logger::info("过滤器创建成功", 'filter_management', [
+                'filter_id' => $filterId,
+                'filter_name' => $filterData['name'],
+                'conditions_count' => count($conditions),
+                'created_by' => $currentUser['id']
+            ]);
+            
             $this->jsonResponse([
                 'message' => 'Filter created successfully',
                 'filter' => $filter
             ], 201);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            Logger::error("过滤器创建失败", 'filter_management', [
+                'filter_name' => $filterData['name'],
+                'error' => $e->getMessage()
+            ]);
             $this->jsonResponse(['error' => 'Failed to create filter'], 500);
         }
     }
@@ -205,11 +217,23 @@ class FilterController
             $this->filterModel->update($id, $updateData, $conditions);
             $updatedFilter = $this->filterModel->findById($id);
             
+            Logger::info("过滤器更新成功", 'filter_management', [
+                'filter_id' => $id,
+                'filter_name' => $filter['name'],
+                'updated_fields' => array_keys($updateData),
+                'updated_by' => $currentUser['id']
+            ]);
+            
             $this->jsonResponse([
                 'message' => 'Filter updated successfully',
                 'filter' => $updatedFilter
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            Logger::error("过滤器更新失败", 'filter_management', [
+                'filter_id' => $id,
+                'filter_name' => $filter['name'],
+                'error' => $e->getMessage()
+            ]);
             $this->jsonResponse(['error' => 'Failed to update filter'], 500);
         }
     }
@@ -248,8 +272,20 @@ class FilterController
 
         try {
             $this->filterModel->delete($id);
+            
+            Logger::info("过滤器删除成功", 'filter_management', [
+                'filter_id' => $id,
+                'filter_name' => $filter['name'],
+                'deleted_by' => $currentUser['id']
+            ]);
+            
             $this->jsonResponse(['message' => 'Filter deleted successfully']);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            Logger::error("过滤器删除失败", 'filter_management', [
+                'filter_id' => $id,
+                'filter_name' => $filter['name'],
+                'error' => $e->getMessage()
+            ]);
             $this->jsonResponse(['error' => 'Failed to delete filter'], 500);
         }
     }
@@ -301,7 +337,7 @@ class FilterController
                 'filter' => $filter,
                 'generated_query' => $query
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->jsonResponse(['error' => 'Failed to build query: ' . $e->getMessage()], 500);
         }
     }

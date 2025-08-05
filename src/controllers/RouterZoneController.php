@@ -5,6 +5,7 @@ namespace UtiCensor\Controllers;
 use UtiCensor\Models\RouterZone;
 use UtiCensor\Models\User;
 use UtiCensor\Utils\JWT;
+use UtiCensor\Utils\Logger;
 
 class RouterZoneController
 {
@@ -111,7 +112,7 @@ class RouterZoneController
                 'message' => 'Router zone created successfully',
                 'zone' => $zone
             ], 201);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->jsonResponse(['error' => 'Failed to create router zone'], 500);
         }
     }
@@ -162,7 +163,7 @@ class RouterZoneController
                 'message' => 'Router zone updated successfully',
                 'zone' => $updatedZone
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->jsonResponse(['error' => 'Failed to update router zone'], 500);
         }
     }
@@ -195,7 +196,7 @@ class RouterZoneController
         try {
             $this->routerZoneModel->delete($id);
             $this->jsonResponse(['message' => 'Router zone deleted successfully']);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->jsonResponse(['error' => 'Failed to delete router zone'], 500);
         }
     }

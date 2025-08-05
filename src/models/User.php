@@ -3,6 +3,7 @@
 namespace UtiCensor\Models;
 
 use UtiCensor\Utils\Database;
+use UtiCensor\Utils\Logger;
 
 class User
 {
@@ -40,11 +41,21 @@ class User
     {
         $user = $this->findByUsername($username);
         if (!$user || !password_verify($password, $user['password_hash'])) {
+            Logger::warning("用户认证失败", 'authentication', [
+                'username' => $username,
+                'reason' => !$user ? 'user_not_found' : 'invalid_password'
+            ]);
             return null;
         }
 
         // Update last login
         $this->db->update('users', ['last_login_at' => date('Y-m-d H:i:s')], ['id' => $user['id']]);
+
+        Logger::info("用户认证成功", 'authentication', [
+            'user_id' => $user['id'],
+            'username' => $user['username'],
+            'role' => $user['role']
+        ]);
 
         unset($user['password_hash']);
         return $user;

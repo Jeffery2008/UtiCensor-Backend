@@ -4,6 +4,7 @@ namespace UtiCensor\Controllers;
 
 use UtiCensor\Models\User;
 use UtiCensor\Utils\JWT;
+use UtiCensor\Utils\Logger;
 
 class RouterMappingController
 {
@@ -110,12 +111,27 @@ class RouterMappingController
 
             if ($updated) {
                 $this->saveConfig($newConfig);
+                
+                Logger::info("路由器映射配置更新成功", 'router_mapping', [
+                    'updated_by' => $this->getCurrentUser()['id'] ?? null,
+                    'updated_sections' => array_keys(array_filter([
+                        'router_identifier_mapping' => isset($input['router_identifier_mapping']),
+                        'router_mapping' => isset($input['router_mapping']),
+                        'interface_mapping' => isset($input['interface_mapping']),
+                        'netify_settings' => isset($input['netify_settings'])
+                    ]))
+                ]);
+                
                 $this->jsonResponse(['message' => 'Router mapping configuration updated successfully']);
             } else {
                 $this->jsonResponse(['error' => 'No valid configuration provided'], 400);
             }
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            Logger::error("路由器映射配置更新失败", 'router_mapping', [
+                'error' => $e->getMessage(),
+                'updated_by' => $this->getCurrentUser()['id'] ?? null
+            ]);
             $this->jsonResponse(['error' => 'Failed to update configuration: ' . $e->getMessage()], 500);
         }
     }
@@ -167,7 +183,7 @@ class RouterMappingController
                 'mapping' => [$key => $value]
             ]);
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->jsonResponse(['error' => 'Failed to add mapping: ' . $e->getMessage()], 500);
         }
     }
@@ -209,7 +225,7 @@ class RouterMappingController
 
             $this->jsonResponse(['message' => 'Mapping removed successfully']);
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->jsonResponse(['error' => 'Failed to remove mapping: ' . $e->getMessage()], 500);
         }
     }
@@ -347,7 +363,7 @@ class RouterMappingController
             $routerZoneModel = new \UtiCensor\Models\RouterZone();
             $zones = $routerZoneModel->getAll();
             $this->jsonResponse(['zones' => $zones]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->jsonResponse(['error' => 'Failed to get zones: ' . $e->getMessage()], 500);
         }
     }

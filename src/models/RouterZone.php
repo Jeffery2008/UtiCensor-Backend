@@ -3,6 +3,7 @@
 namespace UtiCensor\Models;
 
 use UtiCensor\Utils\Database;
+use UtiCensor\Utils\Logger;
 
 class RouterZone
 {
@@ -89,7 +90,17 @@ class RouterZone
             'created_by' => $data['created_by'] ?? null
         ];
         
-        return $this->db->insert('router_zones', $insertData);
+        $zoneId = $this->db->insert('router_zones', $insertData);
+        
+        Logger::zoneCreation("路由器区域创建", [
+            'zone_id' => $zoneId,
+            'zone_name' => $data['zone_name'],
+            'router_identifier' => $data['router_identifier'],
+            'router_name' => $data['router_name'] ?? null,
+            'created_by' => $data['created_by'] ?? null
+        ]);
+        
+        return $zoneId;
     }
 
     public function update(int $id, array $data): bool
